@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Mutex}, net::{SocketAddr, IpAddr, Ipv4Addr}, collections::BTreeMap, time::Duration};
+use std::{sync::{Arc, Mutex, atomic::Ordering::Relaxed}, net::{SocketAddr, IpAddr, Ipv4Addr}, collections::BTreeMap, time::Duration};
 
 use tokio::{runtime::Handle, net::UdpSocket, time::sleep};
 
@@ -8,6 +8,16 @@ const BUFFER_LENGTH: usize = 2048 + 6;
 type BufferType = [u8; BUFFER_LENGTH]; 
 
 static BUFFER_QUEUE : Mutex<Vec<Box<BufferType>>> = Mutex::new(Vec::new()); 
+
+
+mod packets {
+    use std::sync::atomic::AtomicUsize;
+    /// 记录服务器一段时间内接受的包的数目
+    pub static RECEIVE_NUMBER : AtomicUsize = AtomicUsize::new(0); 
+    // 记录服务器一段时间内转发的包的数目
+    // pub static SEND_NUMBER : AtomicUsize = AtomicUsize::new(0); 
+    // 同时计算丢包率
+}
 
 lazy_static! {
     static ref LINKS_BITWIDTH : Mutex<BTreeMap<(SocketAddr, SocketAddr), usize>> = Mutex::new(BTreeMap::new()); 
@@ -28,6 +38,18 @@ async fn exec(rt: &Handle) {
     eprintln!("\x1b[36;1m[INFO ] 服务器启动，udp 地址：{}\x1b[0m", core_socket.local_addr().unwrap()); 
     let core_socket = Arc::new(core_socket); 
     let mut index : usize = 0; 
+    // #[cfg(feature = "count-total-packets")] 
+    {
+        rt.spawn(async {
+            loop {
+                let packets_number = packets::RECEIVE_NUMBER.swap(0, Relaxed); 
+                // if packets_number != 0 {
+                    eprintln!("\x1b[32;1m[DEBUG] 服务器本周期接受了 {packets_number} 个包\x1b[0m"); 
+                // }
+                sleep(Duration::from_secs(2)).await; 
+            }
+        }); 
+    }
     loop {
         let mut buffer; 
         let mut bq = BUFFER_QUEUE.lock().unwrap(); 
@@ -38,6 +60,7 @@ async fn exec(rt: &Handle) {
         }; 
         drop(bq); 
         let (length, src) = core_socket.recv_from(buffer.as_mut_slice()).await.unwrap(); 
+        packets::RECEIVE_NUMBER.fetch_add(1, Relaxed); 
         if length == BUFFER_LENGTH {
             eprintln!("\x1b[33;1m[WARN ] 收取到数据报文 [id={index} src={src}], 报文内容过长，被自动丢弃。\x1b[0m");
             index += 1; 
@@ -79,12 +102,9 @@ async fn send(sender: Arc<UdpSocket>, buffer: &mut [u8], src: SocketAddr, pid: u
             return 
         }
     }
-    let p; 
-    {
-        let link_bw = LINKS_BITWIDTH.lock().unwrap(); 
-        p = link_bw.get(&(src, target)).map(|f| *f); 
-        drop(link_bw); 
-    }
+    let p = {
+        LINKS_BITWIDTH.lock().unwrap().get(&(src, target)).map(|f| *f) 
+    }; 
     match p {
         Some(bw) => {
             let time_cost = (buffer.len() + 6) * 8; 
