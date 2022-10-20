@@ -1,5 +1,5 @@
-use core::panic;
-use std::{net::{UdpSocket, SocketAddr, IpAddr, Ipv4Addr}, sync::Mutex, io::ErrorKind};
+use std::{net::{UdpSocket, SocketAddr, IpAddr, Ipv4Addr}, sync::Mutex, io::ErrorKind, collections::BTreeMap, thread::sleep, time::Duration};
+use lazy_static::lazy_static;
 
 use our_game::ThreadPool;
 
@@ -7,6 +7,9 @@ const BUFFER_SIZE : usize = 25;
 type BufferArray = [u8; BUFFER_SIZE]; 
 
 static BUFFERS: Mutex<Vec<Box<BufferArray>>> = Mutex::new(Vec::new()); 
+lazy_static! {
+    static ref LINKS_BITWIDTH : Mutex<BTreeMap<(SocketAddr, SocketAddr), usize>> = Mutex::new(BTreeMap::new()); 
+}
 
 fn forward(buffer: &mut [u8], pid: usize, addr: SocketAddr, sender: UdpSocket) -> Result<(), ()> {
     if buffer.len() < 6 {
@@ -29,6 +32,26 @@ fn forward(buffer: &mut [u8], pid: usize, addr: SocketAddr, sender: UdpSocket) -
             return Err(())
         }
     }
+    let link_bw = LINKS_BITWIDTH.lock().unwrap(); 
+    let p = link_bw.get(&(addr, target)).map(|f| *f); 
+    drop(link_bw); 
+    // let bitwidth; 
+    match p {
+        Some(bw) => {
+            // bitwidth = bw; 
+            let time_cost = (buffer.len() + 6) * 8; 
+            if bw == 0 {
+                eprintln!("\x1b[33;1m[Warn ] Packet[id {pid}] cannot sent: bitwidth equals 0! \x1b[0m"); 
+                return Err(())
+            }
+            let time_cost = time_cost / bw + 1; 
+            sleep(Duration::from_millis(time_cost as u64)); 
+        },
+        None => {
+            eprintln!("\x1b[33;1m[Warn ] Packet[id {pid}] drops: no links between {addr} & {target}\x1b[0m"); 
+            return Err(())
+        },
+    }
     eprintln!("\x1b[36;1m[Info ] Packet[id {pid}] target addr: {target}. \x1b[0m"); 
     let d = sender.send_to(&buffer, target);
     let d = d.unwrap(); 
@@ -40,9 +63,9 @@ fn forward(buffer: &mut [u8], pid: usize, addr: SocketAddr, sender: UdpSocket) -
 
 fn main() {
     // 构造 UDP 监听服务器
-    let udp_server = UdpSocket::bind("0.0.0.0:9999").unwrap(); 
+    let udp_server = UdpSocket::bind("localhost:9999").unwrap(); 
     let mut id: usize = 0; 
-    eprintln!("\x1b[36;1m[Info ] Bind the UDP Socket at ipv4 (port=9999) successfully. \x1b[0m"); 
+    eprintln!("\x1b[36;1m[Info ] Bind the UDP Socket at {} successfully. \x1b[0m", udp_server.local_addr().unwrap()); 
     // 构造线程池
     let (_, task_manager) = ThreadPool::with_thread_num(7); 
     eprintln!("\x1b[36;1m[Info ] Construct the thread pool to handle data. \x1b[0m"); 
@@ -64,7 +87,8 @@ fn main() {
                     // 在本框架中禁止这种行为
                     ErrorKind::WouldBlock => {
                         eprintln!("\x1b[31;1m[Error] UdpServer socket cann't be nonblocking.\x1b[0m");
-                        panic!() 
+                        eprintln!("\x1b[31;1m[Error] Attempt to reset the server as blocking. \x1b[0m"); 
+                        udp_server.set_nonblocking(false).unwrap();
                     }
                     _ => {
                         unimplemented!("{e:?}")
