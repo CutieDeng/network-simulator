@@ -9,7 +9,6 @@ type BufferType = [u8; BUFFER_LENGTH];
 
 static BUFFER_QUEUE : Mutex<Vec<Box<BufferType>>> = Mutex::new(Vec::new()); 
 
-
 mod packets {
     use std::sync::atomic::AtomicUsize;
     /// 记录服务器一段时间内接受的包的数目
@@ -22,6 +21,13 @@ mod packets {
 lazy_static! {
     static ref LINKS_BITWIDTH : Mutex<BTreeMap<(SocketAddr, SocketAddr), usize>> = Mutex::new(BTreeMap::new()); 
 }
+
+// 延迟
+// todo: 主动丢包
+// 收发包 bytes 单节点 track
+// 压力测试
+// 服务器地址固定，控制器地址
+// 路由
 
 fn main() {
     let rt = tokio::runtime::Builder::new_multi_thread()
