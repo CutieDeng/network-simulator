@@ -39,6 +39,10 @@ fn main() {
     rt.block_on(exec(rt.handle())); 
 }
 
+fn load_config () {
+    const SERVER_IP : &str = "127.67.117.116:52736"; 
+}
+
 async fn exec(rt: &Handle) {
     let core_socket = UdpSocket::bind("localhost:23333").await.unwrap();
     eprintln!("\x1b[36;1m[INFO ] 服务器启动，udp 地址：{}\x1b[0m", core_socket.local_addr().unwrap()); 
