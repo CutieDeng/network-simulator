@@ -13,8 +13,8 @@ mod packets {
     use std::sync::atomic::AtomicUsize;
     /// 记录服务器一段时间内接受的包的数目
     pub static RECEIVE_NUMBER : AtomicUsize = AtomicUsize::new(0); 
-    // 记录服务器一段时间内转发的包的数目
-    // pub static SEND_NUMBER : AtomicUsize = AtomicUsize::new(0); 
+    /// 记录服务器一段时间内转发的包的数目
+    pub static SEND_NUMBER : AtomicUsize = AtomicUsize::new(0); 
     // 同时计算丢包率
 }
 
@@ -44,14 +44,11 @@ async fn exec(rt: &Handle) {
     eprintln!("\x1b[36;1m[INFO ] 服务器启动，udp 地址：{}\x1b[0m", core_socket.local_addr().unwrap()); 
     let core_socket = Arc::new(core_socket); 
     let mut index : usize = 0; 
-    // #[cfg(feature = "count-total-packets")] 
     {
         rt.spawn(async {
             loop {
                 let packets_number = packets::RECEIVE_NUMBER.swap(0, Relaxed); 
-                // if packets_number != 0 {
-                    eprintln!("\x1b[32;1m[DEBUG] 服务器本周期接受了 {packets_number} 个包\x1b[0m"); 
-                // }
+                eprintln!("\x1b[32;1m[DEBUG] 服务器本周期接受了 {packets_number} 个包\x1b[0m"); 
                 sleep(Duration::from_secs(2)).await; 
             }
         }); 

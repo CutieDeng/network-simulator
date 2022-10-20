@@ -17,6 +17,4 @@ tokio = {version = "1.4", features = ["full"]}
 # version = "*"
 # features = ["extension-module"]
 
-[featuers] 
-# default = ["count-total-packets"]
-"count-total-packets" = []
+[features] 
