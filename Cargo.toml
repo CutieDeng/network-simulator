@@ -11,6 +11,7 @@ edition = "2021"
 
 [dependencies]
 lazy_static = "*"
+tokio = {version = "1.4", features = ["full"]}
 
 # [dependencies.cpython]
 # version = "*"

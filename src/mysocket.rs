@@ -34,7 +34,7 @@ impl MySocket {
             },
         }
         new_contents.extend_from_slice(content);
-        match proxy.send_to(&new_contents, "127.0.0.1:9999") {
+        match proxy.send_to(&new_contents, "127.0.0.1:23333") {
             Ok(c) => {
                 eprintln!("[Debug] Successfully send packet, with {c} bytes. ")
             },
