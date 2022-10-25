@@ -14,7 +14,7 @@ mod packets {
     /// 记录服务器一段时间内接受的包的数目
     pub static RECEIVE_NUMBER : AtomicUsize = AtomicUsize::new(0); 
     /// 记录服务器一段时间内转发的包的数目
-    pub static SEND_NUMBER : AtomicUsize = AtomicUsize::new(0); 
+    pub static _SEND_NUMBER : AtomicUsize = AtomicUsize::new(0); 
     // 同时计算丢包率
 }
 
@@ -39,12 +39,12 @@ fn main() {
     rt.block_on(exec(rt.handle())); 
 }
 
-fn load_config () {
+fn _load_config () {
     const SERVER_IP : &str = "127.67.117.116:52736"; 
 }
 
 async fn exec(rt: &Handle) {
-    let core_socket = UdpSocket::bind("localhost:23333").await.unwrap();
+    let core_socket = UdpSocket::bind("127.67.117.116:52736").await.unwrap();
     eprintln!("\x1b[36;1m[INFO ] 服务器启动，udp 地址：{}\x1b[0m", core_socket.local_addr().unwrap()); 
     let core_socket = Arc::new(core_socket); 
     let mut index : usize = 0; 
