@@ -125,7 +125,7 @@ pub async fn push_in_network(mut buffer: MessageType, message_length: usize, fro
     }
     drop(global_router); 
     let target_addr = SocketAddrV4::new(Ipv4Addr::new(buffer[0], buffer[1], buffer[2], buffer[3]), 
-        buffer[4] as u16 + ( buffer[5] as u16 ) << 8); 
+        buffer[4] as u16 + (( buffer[5] as u16 ) << 8)); 
     let src_ip = from_ip.ip().octets();
     for i in 0..4 {
         buffer[i] = src_ip[i]; 
@@ -133,5 +133,6 @@ pub async fn push_in_network(mut buffer: MessageType, message_length: usize, fro
     buffer[4] = from_ip.port() as u8; 
     buffer[5] = (from_ip.port() >> 8) as u8; 
     let message: Message = Message { target: target_addr, message: buffer, message_len: message_length }; 
+    eprintln!("\x1b[32;1m[DEBUG] construct the packet to {} and push into network. \x1b[0m", target_addr); 
     r.sender().send(message).unwrap();
 }

@@ -99,6 +99,9 @@ impl Router {
                 }
             };
             drop(receiver); 
+            if queue.len() > 0 {
+                eprintln!("\x1b[32;1m[DEBUG] router: {} {} packets on wait\x1b[0m", self.ipv4addr, queue.len()); 
+            }
             if let Some(m) = queue.pop_front() {
                 if *m.target.ip() == self.ipv4addr {
                     sender.send_to(&m.message[..m.message_len], m.target).await.unwrap(); 
@@ -180,7 +183,7 @@ impl Router {
                 // calculate the end... 
                 let new_item_len = routers.len(); 
                 drop(routers); 
-                eprintln!("\x1b[32;1[DEBUG] router {}: update router table, size {} -> {}. \x1b[0m", self.ipv4addr, 
+                eprintln!("\x1b[32;1m[DEBUG] router {}: update router table, size {} -> {}. \x1b[0m", self.ipv4addr, 
                     origin_items, new_item_len); 
                 // update your last update time! 
                 last_instant = now; 
