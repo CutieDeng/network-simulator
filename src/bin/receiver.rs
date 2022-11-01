@@ -1,9 +1,9 @@
 use std::net::UdpSocket;
 
-use our_game::mysocket;
+mod mysocket; 
 
 fn main() {
-    let hear = UdpSocket::bind("127.0.0.1:10256").unwrap(); 
+    let hear = UdpSocket::bind("127.0.0.2:10256").unwrap(); 
     let mut contents = [0u8; 1500]; 
     let r = mysocket::MySocket.recv(&hear, &mut contents); 
     match r {

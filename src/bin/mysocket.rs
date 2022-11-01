@@ -1,9 +1,11 @@
+#![no_main]
+
 use std::net::{UdpSocket, ToSocketAddrs, SocketAddr, SocketAddrV4, Ipv4Addr};
 
 pub struct MySocket; 
 
+#[allow(unused)]
 impl MySocket {
-
     pub fn send (&self, proxy: &UdpSocket, send_to: impl ToSocketAddrs, content: &[u8]) -> Result<(), ()> {
         let mut new_contents = Vec::new(); 
         new_contents.reserve(content.len() + 6); 
@@ -62,5 +64,4 @@ impl MySocket {
             Err(_) => { return None },
         }
     }
-    
 }

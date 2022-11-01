@@ -5,8 +5,6 @@ use tokio::{sync::{RwLock, Mutex}, task::{yield_now, JoinHandle}, time::Instant,
 
 use std::sync::atomic::Ordering::Relaxed;
 
-pub mod mysocket; 
-
 pub struct ServerConfig <'a, 'b> {
     local_addr: Cow<'a, str>, 
     controller_addr: Option<Cow<'b, str>>,

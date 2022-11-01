@@ -1,6 +1,5 @@
 use std::net::UdpSocket;
 
-
 static TEXT: &'static str = include_str!("input.txt"); 
 
 fn main() {
