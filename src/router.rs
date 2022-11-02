@@ -20,7 +20,7 @@ pub struct Router {
     outers: Mutex<BTreeMap<Ipv4Addr, (usize, UnboundedSender<Message>)>>, 
     receiver: Mutex<UnboundedReceiver<Message>>, 
     sender: UnboundedSender<Message>, 
-    queue_size: AtomicUsize, 
+    pub queue_size: AtomicUsize, 
     routers: Mutex<BTreeMap<Ipv4Addr, (f64, Ipv4Addr)>>, 
 }
 
@@ -68,6 +68,9 @@ impl Router {
         }); 
         if created {
             let value = value.clone(); 
+            if cfg!(feature = "log-deal") {
+                eprintln!("\x1b[32;1m[{:21}] ip: {}\x1b[0m", "Router Create", value.ipv4addr); 
+            }
             spawn(async move {
                 let t = udp; 
                 value.work(&t).await; 
@@ -78,6 +81,7 @@ impl Router {
 
     pub async fn work(&self, sender: &UdpSocket) {
         let mut queue = LinkedList::new();
+        let mut to_send: Option<(Message, f64)> = None; 
         let mut last_instant = Instant::now(); 
         loop {
             let mut receiver = self.receiver.lock().await; 
@@ -87,9 +91,12 @@ impl Router {
                         if queue.len() < self.queue_size.load(Relaxed) {
                             queue.push_back(r); 
                         } else {
-                            // drop the value r. 
-                            CACHES.lock().await.push_back(r.message);
-                            // remember the information... 
+                            let p = if cfg!(feature = "log-drop") {
+                                format!("queue buffer overflow; router: {}", self.ipv4addr)
+                            } else { 
+                                "".to_string() 
+                            }; 
+                            drop_packet(r.message_len, &p, r.message).await; 
                         }
                     },
                     Err(TryRecvError::Empty) => {
@@ -99,49 +106,60 @@ impl Router {
                 }
             };
             drop(receiver); 
-            if queue.len() > 0 {
-                eprintln!("\x1b[32;1m[DEBUG] router: {} {} packets on wait\x1b[0m", self.ipv4addr, queue.len()); 
+            if let None = to_send {
+                // move a new packet from queue to it. 
+                if let Some(m) = queue.pop_front() {
+                    let ml = m.message_len; 
+                    to_send = Some((m, ((ml + 2) * 8) as f64)); 
+                }
             }
-            if let Some(m) = queue.pop_front() {
-                if *m.target.ip() == self.ipv4addr {
-                    sender.send_to(&m.message[..m.message_len], m.target).await.unwrap(); 
-                    CACHES.lock().await.push_back(m.message); 
+            if let Some((ref i, ref mut val)) = to_send {
+                if *i.target.ip() == self.ipv4addr {
+                    // send the packet to the actual position! 
+                    sender.send_to(&i.message[..i.message_len], i.target).await.unwrap(); 
+                    CACHES.lock().await.push_back(to_send.unwrap().0.message); 
+                    to_send = None; 
                 } else {
+                    sleep(Duration::from_millis(100)).await; 
                     let router = self.routers.lock().await; 
-                    let target = router.get(m.target.ip()).map(|v| v.1);
+                    let target = router.get(i.target.ip()).map(|v| v.1);
                     drop(router); 
                     match target {
                         Some(p) => {
                             let sender = self.outers.lock().await.get(&p).map(|a| (a.0, a.1.clone())); 
                             match sender {
                                 Some((bw, send)) => {
-                                    let packet_bytes = m.message_len + 2; 
-                                    let packet_bits = ( packet_bytes * 8 ) as f64;  
-                                    let cost_time = packet_bits / bw as f64; 
-                                    let cost_time_cal = Duration::from_secs_f64(cost_time); 
-                                    if cost_time_cal >= PERIOD_UPDATE {
-                                        drop_packet(m.message_len, "packet route waiting would timeout", m.message).await; 
-                                    } else {
-                                        sleep(cost_time_cal).await; 
-                                        send.send(m).unwrap(); 
-                                    }
+                                    let bw = bw as f64 / 10.; 
+                                    *val -= bw; 
+                                    if *val <= 0. {
+                                        send.send(to_send.unwrap().0).unwrap(); 
+                                        to_send = None; 
+                                    } 
                                 },
                                 None => {
-                                    drop_packet(m.message_len, "packet route to the impossible direction", m.message).await; 
+                                    let hint = if cfg!(feature = "log-drop") {
+                                        format!("impossible miss router op; locate router: {}", self.ipv4addr) 
+                                    } else { "".to_string() }; 
+                                    drop_packet(i.message_len, &hint, to_send.unwrap().0.message).await; 
+                                    to_send = None; 
                                 },
                             }
                         },
                         None => {
-                            let hint = format!("packet (target {}:{:5}) fails with the missing routing item (router {})", m.target.ip(), m.target.port(), self.ipv4addr); 
-                            drop_packet(m.message_len, &hint, m.message).await; 
+                            let hint = 
+                                if cfg!(feature = "log-drop") {
+                                    format!("packet (target {}:{:5}) fails with the missing routing item; router: {}", i.target.ip(), i.target.port(), self.ipv4addr)
+                                } else {
+                                    "".into()
+                                }; 
+                            drop_packet(i.message_len, &hint, to_send.unwrap().0.message).await; 
+                            to_send = None; 
                         },
-                    }; 
+                    }
                 }
             }
             let now = Instant::now(); 
             if now - last_instant > PERIOD_UPDATE {
-                // do something... 
-                // let single_update = GLOBAL_MAPS.lock().await; 
                 let origin_items; 
                 let globals = GLOBAL_ROUTERS.lock().await; 
                 let mut routers = self.routers.lock().await; 
@@ -151,6 +169,9 @@ impl Router {
                     let outer = self.outers.lock().await; 
                     for (t, (bw, _)) in outer.iter() {
                         let entry = routers.entry(*t);
+                        if *bw == 0 {
+                            continue 
+                        }
                         let speed = 1. / *bw as f64; 
                         entry.and_modify(|v| {
                             if v.0 < speed {
@@ -162,6 +183,7 @@ impl Router {
                 let p: Vec<_> = self.outers.lock().await.iter().map(|(ipv4, (bw, _))| (*ipv4, *bw)).collect(); 
                 for (ip, bw) in p {
                     let speed = 1. / bw as f64; 
+                    if bw == 0 { continue }
                     let g3 = globals.get(&ip); 
                     match g3 {
                         Some(g3) => {
@@ -183,14 +205,19 @@ impl Router {
                 // calculate the end... 
                 let new_item_len = routers.len(); 
                 drop(routers); 
-                eprintln!("\x1b[32;1m[DEBUG] router {}: update router table, size {} -> {}. \x1b[0m", self.ipv4addr, 
-                    origin_items, new_item_len); 
+                if cfg!(feature = "log-update") {
+                    eprintln!("\x1b[32;1m[{:21}] {}\x1b[0m", "Router Table Update", 
+                        if origin_items == new_item_len {
+                            format!("table size({origin_items}) not changed. ")
+                        } else {
+                            format!("table size {} -> {}. ", origin_items, new_item_len)
+                        })
+                }
                 // update your last update time! 
                 last_instant = now; 
             }
             yield_now().await; 
         }; 
-
     }
 }
 
@@ -208,14 +235,16 @@ pub mod config {
     pub static LOSS_BYTES: AtomicUsize = AtomicUsize::new(0); 
     pub static RECEIVE_BYTES: AtomicUsize = AtomicUsize::new(0); 
 
-    pub(super) async fn drop_packet(input: usize, hint: &str, packet: MessageType) {
+    pub async fn drop_packet(input: usize, hint: &str, packet: MessageType) {
         if input < 6 {
             // impossible, without the proper bytes ahead... 
-            eprintln!("\x1b[31;1m[ERROR] Packet Invalid: {hint}\x1b[0m");
+            eprintln!("\x1b[31;1m[{:21}] cause: {hint}\x1b[0m", "Packet Length Invalid");
         } else {
             LOSS_PACKETS.fetch_add(1, Relaxed); 
             LOSS_BYTES.fetch_add(input - 6, Relaxed); 
-            eprintln!("\x1b[32;1m[DEBUG] Packet Drop: {hint}\x1b[0m");
+            if cfg!(feature = "log-drop") {
+                eprintln!("\x1b[32;1m[{:21}] cause: {hint}\x1b[0m", "Drop Event at Route");
+            }
         }
         CACHES.lock().await.push_back(packet); 
     }

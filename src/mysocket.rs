@@ -1,5 +1,3 @@
-#![no_main]
-
 use std::net::{UdpSocket, ToSocketAddrs, SocketAddr, SocketAddrV4, Ipv4Addr};
 
 pub struct MySocket; 

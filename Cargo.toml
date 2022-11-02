@@ -18,3 +18,8 @@ tokio = {version = "1.4", features = ["full"]}
 # features = ["extension-module"]
 
 [features] 
+default = ["log-drop", "log-update", "log-deal", "log-packet"]
+log-drop = [] 
+log-update = []
+log-deal = [] 
+log-packet = []

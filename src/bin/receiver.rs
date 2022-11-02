@@ -1,6 +1,6 @@
 use std::net::UdpSocket;
 
-mod mysocket; 
+use our_game::mysocket;
 
 fn main() {
     let hear = UdpSocket::bind("127.0.0.2:10256").unwrap(); 
