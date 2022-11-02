@@ -189,6 +189,7 @@ impl Router {
                         Some(g3) => {
                             let r2 = g3.routers.lock().await;
                             for (target, (sp2, _)) in r2.iter() {
+                                if *target == self.ipv4addr { continue }
                                 let entry = routers.entry(*target); 
                                 let speed = speed + sp2; 
                                 entry.and_modify(|v| {
